@@ -9,5 +9,8 @@ data/
 *.duckdb.wal
 *.parquet
 
+# status page is built and deployed by the workflow, not committed
+site/
+
 .venv/
 __pycache__/

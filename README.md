@@ -3,7 +3,9 @@
 A CS 452 data pipeline that bulk-loads 90 days of Magic: The Gathering card prices
 (66M rows), then keeps itself current on a schedule, with no one pushing the button.
 
-**Stack:** MTGJSON → GitHub Actions (hourly cron) → MotherDuck (cloud DuckDB) → MotherDuck UI / Dives
+**Stack:** MTGJSON → GitHub Actions (hourly cron) → MotherDuck (cloud DuckDB) → GitHub Pages status page
+
+**Live status page: https://ethanhilton3.github.io/mtg-price-pipeline/**
 
 ## Architecture
 
@@ -35,7 +37,8 @@ flowchart LR
         RUNS[("ingest_runs<br/><i>continuity ledger</i>")]
     end
 
-    SHOW["Stage 5: MotherDuck UI / Dives<br/><i>sql/checks.sql</i>"]
+    GOLD[("daily_counts + top_movers<br/><i>gold: small, refreshed daily</i>")]
+    SHOW["Stage 5: GitHub Pages status page<br/><i>rebuilt every run</i>"]
 
     HIST --> DL
     CSV --> DL
@@ -48,7 +51,7 @@ flowchart LR
     ING -->|idempotent MERGE| PRICES
     ING --> RUNS
     HC --> RUNS
-    PRICES --> SHOW
+    PRICES --> GOLD --> SHOW
     RUNS --> SHOW
 ```
 
@@ -63,7 +66,7 @@ so a queue would add a moving part with nothing to decouple.
 | Cadence | Poll **hourly**, data changes **daily** | The source updates once a day, so faster ingestion is pointless. Polling hourly means a skipped GitHub run delays data by an hour, not a day. Polls that find nothing only fetch `Meta.json` (~100 bytes). |
 | Ingest | GitHub Actions cron | Runs with the laptop closed, the schedule is version-controlled, and it's free on a public repo. |
 | Store | MotherDuck | Cloud DuckDB: columnar, fast on 66M rows, and the free Lite tier (10 GB) fits easily. The same SQL runs locally (`data/mtg.duckdb`) and in the cloud (`md:mtg`), so development was offline. |
-| Show | MotherDuck UI / Dives | Built in, so there's no extra service to connect. |
+| Show | GitHub Pages status page | Rebuilt at the end of every run, even failed ones. It's static HTML, so no token reaches the browser. It reads only the small gold tables (`daily_counts`, `top_movers`), which are refreshed when prices change, so hourly page builds don't rescan 68M rows and burn free-tier compute. "Last run N min ago" is computed in the viewer's browser, so if the schedule silently dies the page *visibly* goes stale. For ad-hoc exploration, use the MotherDuck UI with `sql/checks.sql`. |
 
 **Seed vs. trickle.** These are two different paths. The seed downloads the 90-day history
 *once*, saves the raw file, flattens it to parquet, and bulk-loads from disk. The hourly

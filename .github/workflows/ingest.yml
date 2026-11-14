@@ -14,6 +14,12 @@ concurrency:
   group: ingest
   cancel-in-progress: false
 
+# Least privilege: read the repo, publish to Pages, nothing else.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
@@ -33,3 +39,22 @@ jobs:
       - name: Healthcheck (fails if data is stale)
         if: always()
         run: python -m pipeline.healthcheck
+      # Build the status page even when a step above failed, so failures show up on it.
+      - name: Build status page
+        if: always()
+        run: python -m pipeline.status_page
+      - uses: actions/upload-pages-artifact@v3
+        if: always()
+        with:
+          path: site
+
+  publish:
+    needs: ingest
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

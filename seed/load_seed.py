@@ -64,6 +64,8 @@ def main():
     t0 = time.time()
     counts = store.merge_prices(con, f"read_parquet('{seed}')", run_id)
     print(f"prices: {counts} ({time.time() - t0:.0f}s)")
+    counts.pop("date_range")
+    store.refresh_gold(con)   # full recount for the status page
     store.finish_run(con, run_id, "success", message=f"seed from {Path(seed).name}", **counts)
 
 

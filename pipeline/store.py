@@ -114,7 +114,54 @@ def merge_prices(con, source, run_id: str) -> dict:
         "rows_updated": counts.get("update", 0),
         "rows_unchanged": counts.get("same", 0),
         "unknown_cards": unknown,
+        "date_range": (lo, hi),
     }
+
+
+def refresh_gold(con, lo=None, hi=None) -> None:
+    """Rebuild the status-page tables from prices (the gold layer).
+
+    lo/hi = only recount those days (daily run). None = recount everything.
+    """
+    where = "" if lo is None else "WHERE price_date BETWEEN ? AND ?"
+    params = [] if lo is None else [lo, hi]
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(f"DELETE FROM daily_counts {where}", params)
+        con.execute(f"""
+            INSERT INTO daily_counts
+            SELECT price_date, count(*), count(DISTINCT uuid),
+                   count_if(run_id LIKE 'seed-%'), current_timestamp
+            FROM prices {where} GROUP BY price_date
+        """, params)
+        # Newest TCGplayer retail price vs. that printing's average over the prior days.
+        con.execute("DELETE FROM top_movers")
+        con.execute("""
+            INSERT INTO top_movers
+            WITH latest AS (SELECT max(price_date) AS d FROM prices),
+            p AS (
+                SELECT uuid, finish, price_date, price FROM prices
+                WHERE provider = 'tcgplayer' AND price_type = 'retail' AND format = 'paper'
+            ),
+            agg AS (
+                SELECT p.uuid, p.finish, l.d AS as_of,
+                       avg(p.price) FILTER (WHERE p.price_date < l.d) AS avg_prior,
+                       max(p.price) FILTER (WHERE p.price_date = l.d) AS today
+                FROM p CROSS JOIN latest l
+                GROUP BY ALL
+            )
+            SELECT row_number() OVER (ORDER BY today / avg_prior DESC)::INTEGER,
+                   c.name, c.set_name, a.finish, round(a.avg_prior, 2), a.today,
+                   round(100 * (a.today / a.avg_prior - 1), 1), a.as_of
+            FROM agg a JOIN cards c USING (uuid)
+            WHERE a.today >= 5 AND a.avg_prior > 0
+            ORDER BY a.today / a.avg_prior DESC
+            LIMIT 20
+        """)
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
 
 
 def start_run(con, run_id, mode, trigger, source_build=None):

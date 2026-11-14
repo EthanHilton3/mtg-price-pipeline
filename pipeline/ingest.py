@@ -70,6 +70,7 @@ def main() -> int:
         if table.num_rows == 0:
             raise RuntimeError(f"build {build} contained no prices on/after {last}")
         counts = store.merge_prices(con, table, run_id)
+        store.refresh_gold(con, *counts.pop("date_range"))   # status-page tables
         new_last = con.execute("SELECT max(price_date) FROM prices").fetchall()[0][0]
         msg = f"{mode}: {last} -> {new_last} (gap {gap_days}d)"
         store.finish_run(con, run_id, "success", mode=mode, source_build=build, message=msg, **counts)

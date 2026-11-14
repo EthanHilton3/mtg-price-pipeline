@@ -35,6 +35,27 @@ CREATE TABLE IF NOT EXISTS cards (
     source_build  VARCHAR           -- MTGJSON build the row came from
 );
 
+-- Gold layer: small pre-aggregated tables for the status page. Refreshed only
+-- when prices change (about once a day), so hourly page builds stay cheap.
+CREATE TABLE IF NOT EXISTS daily_counts (
+    price_date        DATE,
+    n_rows            BIGINT,
+    n_cards           BIGINT,
+    n_rows_from_seed  BIGINT,       -- rows still carrying a seed run_id
+    refreshed_at      TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS top_movers (
+    rank        INTEGER,
+    name        VARCHAR,
+    set_name    VARCHAR,
+    finish      VARCHAR,
+    avg_prior   DOUBLE,             -- average TCGplayer retail before the newest day
+    today       DOUBLE,
+    pct_change  DOUBLE,
+    as_of       DATE
+);
+
 -- Continuity ledger: one row per pipeline run, including runs that found nothing.
 -- This is how we prove the pipeline is alive between daily price drops.
 CREATE TABLE IF NOT EXISTS ingest_runs (
