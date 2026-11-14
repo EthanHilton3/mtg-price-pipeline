@@ -1,0 +1,13 @@
+# secrets: never commit
+secrets.json
+.env
+*.token
+
+# data is rebuilt from MTGJSON, not versioned in git
+data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+.venv/
+__pycache__/

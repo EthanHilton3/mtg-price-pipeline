@@ -1,0 +1,35 @@
+name: ingest
+
+on:
+  schedule:
+    # Hourly at :17. MTGJSON publishes once a day (~06:15 UTC), but polling hourly
+    # means a skipped or delayed GitHub run costs us an hour, not a day.
+    # :17 instead of :00 because GitHub's scheduler is most congested on the hour.
+    - cron: "17 * * * *"
+  workflow_dispatch: {}   # "Run workflow" button for manual runs and demos
+
+# Never let two runs merge at the same time (e.g. a slow backfill overlapping
+# the next hourly run). The MERGE is idempotent, but there's no reason to race.
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MTG_DB: md:mtg
+      motherduck_token: ${{ secrets.MOTHERDUCK_TOKEN }}   # GitHub secret, never in the repo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Ingest (skip / daily / backfill)
+        run: python -m pipeline.ingest
+      - name: Healthcheck (fails if data is stale)
+        if: always()
+        run: python -m pipeline.healthcheck
